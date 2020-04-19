@@ -124,12 +124,31 @@ def restore_to_proper_shelf(shelves):
     log_action(shelves, 'shelf restore')
 
 
+def restore_single_item_to_shelf(shelves):
+    """
+    Simplpe routine to restore a single item to a shelf
+    :return: Nothing
+    """
+    restored_items = []
+    for k, v in shelves['overflow'].food_dict.items():
+        proper_shelf = shelves[v.temp]
+        if len(proper_shelf.food_dict) < proper_shelf.shelf_max:
+            restored_items.append(k)
+            proper_shelf.add_food_to_shelf(v)
+            break  # only restore one item
+    for curr_key in restored_items:
+        shelves['overflow'].food_dict.pop(curr_key)
+        log_action(shelves, 'shelf restored {} from overflow'.format(curr_key))
+
+
+
 class NewItemStatus(Enum):
     ok = 0
     no_shelf = 1
     moved_item_to_overflow = 2
     removed_item_for_room = 3
     already_shelved = 4
+    restored_from_overflow = 5
 
 
 def process_new_item(shelves, curr_item: FoodItem):
@@ -186,6 +205,77 @@ def process_new_item(shelves, curr_item: FoodItem):
                        curr_item.id
                    ))
         rc = NewItemStatus.ok
+    return rc
+
+def process_new_item_2(shelves, curr_item: FoodItem):
+    """
+    Add a new item to the proper shelf, rearrange other items as required
+    :param shelves: Dictionary of shelves
+    :param curr_item: Item to be added
+    :return: NewItemStatus - unless the shelf cannot be found (no_shelf) or the item is already in a shelf
+      (already_shelved), item was added. Possible warnings/ informationals include if
+      other items had to be moved to overflow - and possibly if something else was moved from it and
+      tossed out
+    """
+    rc = NewItemStatus.ok
+
+    # Step 1 - Make sure it does not already exist
+    for curr_shelf in shelves.values():
+        if curr_shelf.food_dict.get(curr_item.id, None) is not None:
+            log_action(shelves,
+                       'New item {} already on shelf {}.'.format(
+                           curr_item.id, curr_shelf.shelf_type
+                       ))
+
+            return NewItemStatus.already_shelved
+
+    # Step 2 - see if can fit into proper shelf without dropping anything
+    proper_shelf = shelves.get(curr_item.temp, None)
+    if proper_shelf is None:
+        log_action(shelves,
+                   'New item {} cannot be added to non-existent shelf {}.'.format(
+                       curr_item.id, curr_item.temp
+                   ))
+
+        return NewItemStatus.no_shelf
+
+    if len(proper_shelf.food_dict) < proper_shelf.shelf_max:
+        # simply add it
+        proper_shelf.add_food_to_shelf(curr_item)
+        log_action(shelves,
+                   'New item {} added.'.format(
+                       curr_item.id
+                   ))
+        rc = NewItemStatus.ok
+    else:
+        # need to add to overflow - text is a little ambiguous - could interpret as
+        # moving something already present or putting this new item on overflow
+        # putting this item on overflow seems most reasonable
+        overflow_shelf = shelves.get('overflow')
+        if len(overflow_shelf.food_dict) < overflow_shelf.shelf_max:
+            overflow_shelf.add_food_to_shelf(curr_item)
+            log_action(shelves,
+                       'New item {} added to overflow.'.format(
+                           curr_item.id
+                       ))
+            rc = NewItemStatus.moved_item_to_overflow
+        else:
+            # see if we can move something to its proper shelf
+            restore_single_item_to_shelf(shelves)
+            if len(overflow_shelf.food_dict) < overflow_shelf.shelf_max:
+                overflow_shelf.add_food_to_shelf(curr_item)
+                log_action(shelves,
+                           'New item {} added to overflow, restored other from overflow.'.format(
+                               curr_item.id
+                           ))
+                rc = NewItemStatus.restored_from_overflow
+            else:
+                # worst case - need to remove something. Pick the thing that is cheapest
+                removed_item =  overflow_shelf.add_food_to_shelf(curr_item)
+                log_action(shelves,
+                           'New item {} added to overflow.  Tossed {}'.format(
+                               curr_item.id, removed_item.id))
+                rc = NewItemStatus.removed_item_for_room
     return rc
 
 
@@ -293,13 +383,13 @@ def main(time_between_ticks, number_per_tick, json_fn, hot_size, cold_size, froz
         for curr_shelf in shelves.values():
             curr_shelf.add_ticks(1)
         courier_action(shelves, couriers)
-        restore_to_proper_shelf(shelves)
+        # restore_to_proper_shelf(shelves)
         if total_ingested < len_list:
             for i in range(number_per_tick):
                 curr_item = next(jsons)
                 food_item = FoodItem(curr_item)
                 total_ingested += 1
-                rc = process_new_item(shelves, food_item)
+                rc = process_new_item_2(shelves, food_item)
                 if rc != NewItemStatus.no_shelf and rc != NewItemStatus.already_shelved:
                     courier_time = random.randint(courier_low, courier_low + courier_size) + curr_tick
                     courier_slot = couriers.pop(courier_time, [])
