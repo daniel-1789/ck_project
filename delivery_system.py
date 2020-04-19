@@ -4,6 +4,52 @@ import random
 import sys
 from enum import Enum
 
+"""
+Some notes on this program. 
+- Run this program with --help to see the possible parameters I created.
+
+- I'm using a curr_tick variable to represent ticks of the clock. Alternatively, a second-based epoch
+could have been used. Given the way Python allocates memory, this should be fine for decades of ticks.
+
+- I experimented with a mechansism that with every tick of the clock it performs a rebalancing operation,
+going through the list of all food on the overflow shelf and seeing if it could be moved back to the 
+proper shelf. However, that is not what the instructions said to do so I left the code present for possib;e
+future use. It worked well and helped avoid spoilage of food when I experiemented with couriers arriving
+later.
+
+- I'm representing the shelves as an array of FoodShelf objects, a class I created in this program. The center
+of that class is a dictionary of FoodItems (another class I created), using the id as the key. 
+
+- The couriers who deliver the food are represented by a dictionary of lists. Each key is a tick of the clock
+and the value is a list of FoodItems that need to be picked up. The courier will first look for the food on
+the proper shel and the overflow shelf. Since the food is stored in a dictionary on the shelves, this is a
+series of O(1) operations - an O(1) to get the list of food ready to be picked up, an O(1) to search for
+proper food shelf, and an O(1) to search the overflow shelf. A possible bottleneck is the case where there are
+a very large number of FoodItems to be picked up, as each will be processed linerarly. That's clearly not
+the case in this exercise, but in a production environment would need to be considered - it might be an 
+opportunity for some parallelism, though Python tends to be a bit mediocre when dealing with parallel
+programming.
+
+- I found the following text a little ambiguous:
+"The kitchen pick-up area has multiple shelves to hold cooked orders at different temperatures. Each order should be 
+placed on a shelf that matches the order’s temperature. If that shelf is full, an order can be placed on the 
+overflow shelf. If the overflow shelf is full, an existing order of your choosing on the overflow should be 
+moved to an allowable shelf with room​.​ If no such move is possible, an order from
+the overflow shelf should be discarded as waste (and will not be available for a courier pickup)."
+
+Specifically I was a bit unclear as to which order is to be moved to the overflow shelf  - "an order". I 
+experimented with moving the least valuable item and with moving the new order on the overflow shelf. Putting
+the new order on the overflow shelf seemed the most reasonable option to me so that is what I went with. 
+In a "real world" environment, this is certainly an area where I would talk with the stakeholders as to 
+what their desire was. As it is, the code would be very easy to modify to change the algorithm.
+
+- The processing of every tick is a bit of a potential bottleneck on a larger scale environment, as for
+every item currently on a shelf new calculations need to be made for the new value of the item. One
+optimization to consider on a much larger-scale system would be to, upon putting an item on a shelf, doing
+a calculation as to when its value will reach 0 and using a dictionary (i.e. hash table) to store lists of
+food that expire on certain ticks of the clock. T
+"""
+
 curr_tick = 0  # global clock
 
 
@@ -47,7 +93,7 @@ class FoodShelf:
 
     def find_cheapest_item(self):
         """
-        Simple linear search to find cheapest item - used when deciding what to toss out/move to a new shelf.
+        Simple linear search to find cheapest item - used when deciding what to toss outf.
         Definitely opportunity for optimization should the shelf change from room for double-digits of entries
         to thousands/millions/etc.
         :return: cheapest item's id
@@ -66,7 +112,7 @@ class FoodShelf:
 
     def add_food_to_shelf(self, food_item: FoodItem):
         """
-        Add a food item to this shelf. If the shelf is full bump the least valuable item
+        Add a food item to this shelf. If the shelf is full remove the least valuable item.
         :param food_item: food item to add
         :return: None if food added to shelf without bumping anything, otherwise the food that was bumped
         """
@@ -105,12 +151,39 @@ class FoodShelf:
             log_action({self.shelf_type: self}, 'Threw out expired {}'.format(curr_food))
 
 
+
+def restore_single_item_to_shelf(shelves):
+    """
+    Simple routine to restore a single item to a shelf. Go through the overflow shelf and the first item
+    that's native shelf has room, take it and put it back there. Could be optimized to save the item with
+    the most value or some other algorithm but here just going arbitrarily for the first one that can
+    be restred.
+    :param shelves: Dictionary of shelves - hot, cold, frozen, overflow.
+    :return: Nothing
+    """
+    restored_items = []
+    for k, v in shelves['overflow'].food_dict.items():
+        proper_shelf = shelves[v.temp]
+        if len(proper_shelf.food_dict) < proper_shelf.shelf_max:
+            restored_items.append(k)
+            proper_shelf.add_food_to_shelf(v)
+            break  # only restore one item but we could actually allow it to run through all
+    for curr_key in restored_items:  # realistically only going to run once
+        shelves['overflow'].food_dict.pop(curr_key)
+        log_action(shelves, 'shelf restored {} from overflow'.format(curr_key))
+
+
 def restore_to_proper_shelf(shelves):
     """
-    At the start of every tick, see if the items on the standby shelf can find their way back to the
+    This function is currently not in use but has been experimented and does work. The idea is at the
+    start of every tick, see if the items on the standby shelf can find their way back to the
     proper shelves. Could add some complexity here at a later point if desired to optimize what gets moved
     and to speed things up but with shelves having room in the double digits not needed at this point.
-    :param shelves: Dictionary of shelves - hot, cold, frozen, standby.
+
+    Not currently calling this as it goes beyond the parameters of the assignment but offered as a potential
+    improvement, mimimizing time spent on overflow shelf.
+
+    :param shelves: Dictionary of shelves - hot, cold, frozen, overflow.
     :return: Nothing
     """
     restored_items = []
@@ -124,24 +197,6 @@ def restore_to_proper_shelf(shelves):
     log_action(shelves, 'shelf restore')
 
 
-def restore_single_item_to_shelf(shelves):
-    """
-    Simplpe routine to restore a single item to a shelf
-    :return: Nothing
-    """
-    restored_items = []
-    for k, v in shelves['overflow'].food_dict.items():
-        proper_shelf = shelves[v.temp]
-        if len(proper_shelf.food_dict) < proper_shelf.shelf_max:
-            restored_items.append(k)
-            proper_shelf.add_food_to_shelf(v)
-            break  # only restore one item
-    for curr_key in restored_items:
-        shelves['overflow'].food_dict.pop(curr_key)
-        log_action(shelves, 'shelf restored {} from overflow'.format(curr_key))
-
-
-
 class NewItemStatus(Enum):
     ok = 0
     no_shelf = 1
@@ -150,20 +205,20 @@ class NewItemStatus(Enum):
     already_shelved = 4
     restored_from_overflow = 5
 
-
 def process_new_item(shelves, curr_item: FoodItem):
     """
     Add a new item to the proper shelf, rearrange other items as required
     :param shelves: Dictionary of shelves
     :param curr_item: Item to be added
     :return: NewItemStatus - unless the shelf cannot be found (no_shelf) or the item is already in a shelf
-      (already_shelved), item was added. Possible warnings/ informationals include if
-      other items had to be moved to overflow - and possibly if something else was moved from it and
-      tossed out
+      (already_shelved), item was added. If moved_item_to_overflow, removed_item_for_room, or
+      restored_from_overflow, it had to be placed on the overflow shelf. removed_item_for_room indicates
+      something on the overflow shelf had to be thrown out. If restored_from_overflow something from the
+      overflow shelf was put in its proper shelf to make room for this item.
     """
     rc = NewItemStatus.ok
 
-    # Step 1 - Make sure it does not already exist
+    #  - Make sure it does not already exist
     for curr_shelf in shelves.values():
         if curr_shelf.food_dict.get(curr_item.id, None) is not None:
             log_action(shelves,
@@ -173,7 +228,7 @@ def process_new_item(shelves, curr_item: FoodItem):
 
             return NewItemStatus.already_shelved
 
-    # Step 2 - see if can fit into proper shelf without dropping anything
+    # make sure the shelf it is to go on actually exists
     proper_shelf = shelves.get(curr_item.temp, None)
     if proper_shelf is None:
         log_action(shelves,
@@ -183,69 +238,11 @@ def process_new_item(shelves, curr_item: FoodItem):
 
         return NewItemStatus.no_shelf
 
-    dropped_item = proper_shelf.add_food_to_shelf(curr_item)
-
-    # Step 3 - if we removed something add it to overflow
-    if dropped_item is not None:
-        lost_item = shelves['overflow'].add_food_to_shelf(dropped_item)
-        if lost_item is not None:
-            log_action(shelves,
-                       'New item {} added. Moved {} to overflow. Tossed {}'.format(
-                           curr_item.id, dropped_item.id, lost_item.id))
-            rc = NewItemStatus.removed_item_for_room
-        else:
-            log_action(shelves,
-                       'New item {} added. Moved {} to overflow.'.format(
-                           curr_item.id, dropped_item.id
-                       ))
-            rc = NewItemStatus.moved_item_to_overflow
-    else:
-        log_action(shelves,
-                   'New item {} added.'.format(
-                       curr_item.id
-                   ))
-        rc = NewItemStatus.ok
-    return rc
-
-def process_new_item_2(shelves, curr_item: FoodItem):
-    """
-    Add a new item to the proper shelf, rearrange other items as required
-    :param shelves: Dictionary of shelves
-    :param curr_item: Item to be added
-    :return: NewItemStatus - unless the shelf cannot be found (no_shelf) or the item is already in a shelf
-      (already_shelved), item was added. Possible warnings/ informationals include if
-      other items had to be moved to overflow - and possibly if something else was moved from it and
-      tossed out
-    """
-    rc = NewItemStatus.ok
-
-    # Step 1 - Make sure it does not already exist
-    for curr_shelf in shelves.values():
-        if curr_shelf.food_dict.get(curr_item.id, None) is not None:
-            log_action(shelves,
-                       'New item {} already on shelf {}.'.format(
-                           curr_item.id, curr_shelf.shelf_type
-                       ))
-
-            return NewItemStatus.already_shelved
-
-    # Step 2 - see if can fit into proper shelf without dropping anything
-    proper_shelf = shelves.get(curr_item.temp, None)
-    if proper_shelf is None:
-        log_action(shelves,
-                   'New item {} cannot be added to non-existent shelf {}.'.format(
-                       curr_item.id, curr_item.temp
-                   ))
-
-        return NewItemStatus.no_shelf
-
+    #  see if can fit into proper shelf without dropping anything
     if len(proper_shelf.food_dict) < proper_shelf.shelf_max:
         # simply add it
         proper_shelf.add_food_to_shelf(curr_item)
-        log_action(shelves,
-                   'New item {} added.'.format(
-                       curr_item.id
-                   ))
+        log_action(shelves,'New item {} added.'.format(curr_item.id))
         rc = NewItemStatus.ok
     else:
         # need to add to overflow - text is a little ambiguous - could interpret as
@@ -254,26 +251,20 @@ def process_new_item_2(shelves, curr_item: FoodItem):
         overflow_shelf = shelves.get('overflow')
         if len(overflow_shelf.food_dict) < overflow_shelf.shelf_max:
             overflow_shelf.add_food_to_shelf(curr_item)
-            log_action(shelves,
-                       'New item {} added to overflow.'.format(
-                           curr_item.id
-                       ))
+            log_action(shelves, 'New item {} added to overflow.'.format(curr_item.id))
             rc = NewItemStatus.moved_item_to_overflow
         else:
             # see if we can move something to its proper shelf
             restore_single_item_to_shelf(shelves)
             if len(overflow_shelf.food_dict) < overflow_shelf.shelf_max:
                 overflow_shelf.add_food_to_shelf(curr_item)
-                log_action(shelves,
-                           'New item {} added to overflow, restored other from overflow.'.format(
-                               curr_item.id
-                           ))
+                log_action(shelves, 'New item {} added to overflow, restored other from overflow.'.format(
+                            curr_item.id))
                 rc = NewItemStatus.restored_from_overflow
             else:
                 # worst case - need to remove something. Pick the thing that is cheapest
                 removed_item =  overflow_shelf.add_food_to_shelf(curr_item)
-                log_action(shelves,
-                           'New item {} added to overflow.  Tossed {}'.format(
+                log_action(shelves, 'New item {} added to overflow.  Tossed {}'.format(
                                curr_item.id, removed_item.id))
                 rc = NewItemStatus.removed_item_for_room
     return rc
@@ -317,9 +308,11 @@ def courier_action(shelves, couriers):
                 log_action(shelves, 'Courier could not find {}'.format(courier.id))
             else:
                 removed_list.append(removed_food)
-                log_action(shelves, 'Courier picked up and delivered {} from overflow'.format(removed_food.id))
+                log_action(shelves, 'Courier picked up and delivered {} of value {} from overflow'.format(
+                    removed_food.id, removed_food.value))
         else:
-            log_action(shelves, 'Courier picked up and delivered {} from {}'.format(removed_food.id, courier.temp))
+            log_action(shelves, 'Courier picked up and delivered {} of value {} from {}'.format(
+                removed_food.id, removed_food.value, courier.temp))
             removed_list.append(removed_food)
     return removed_list
 
@@ -382,14 +375,14 @@ def main(time_between_ticks, number_per_tick, json_fn, hot_size, cold_size, froz
         curr_tick += 1
         for curr_shelf in shelves.values():
             curr_shelf.add_ticks(1)
-        courier_action(shelves, couriers)
-        # restore_to_proper_shelf(shelves)
+        courier_action(shelves, couriers)  # for every tick, see if there's any couriers ready to go.
+        # at this point we could trigger a shelf reshuffling to restore things from overflow to proper shelves
         if total_ingested < len_list:
             for i in range(number_per_tick):
                 curr_item = next(jsons)
                 food_item = FoodItem(curr_item)
                 total_ingested += 1
-                rc = process_new_item_2(shelves, food_item)
+                rc = process_new_item(shelves, food_item)
                 if rc != NewItemStatus.no_shelf and rc != NewItemStatus.already_shelved:
                     courier_time = random.randint(courier_low, courier_low + courier_size) + curr_tick
                     courier_slot = couriers.pop(courier_time, [])
@@ -399,7 +392,7 @@ def main(time_between_ticks, number_per_tick, json_fn, hot_size, cold_size, froz
                     break
 
 
-def usage_message():
+def usage_message(help_request = False):
     """
     Simple usage message.
     :return: Exits 1
@@ -415,7 +408,8 @@ def usage_message():
     print('--courier_low min_seconds_delay_for_courier')
     print('--courier_num num_additional_possible_seconds_delay')
     print('--help')
-    exit(1)
+    if not help_request:
+        exit(1)
 
 
 if __name__ == "__main__":
@@ -429,13 +423,12 @@ if __name__ == "__main__":
     overflow_size = 15
     courier_low = 2
     courier_num = 5
-
+    help_request = False
     try:
         if len(sys.argv) > 1:
             pointer = 1
             while pointer < len(sys.argv):
                 curr_arg = sys.argv[pointer]
-                print(curr_arg)
                 pointer += 1
                 if curr_arg == '--tick':
                     tick_time = float(sys.argv[pointer])
@@ -465,10 +458,13 @@ if __name__ == "__main__":
                     courier_num = int(sys.argv[pointer])
                     pointer += 1
                 elif curr_arg == '--help':
-                    raise ()
+                    help_request = True
+                    usage_message(help=True)
+                    break
                 else:
                     raise ()
     except:
         usage_message()
 
-    main(tick_time, num_ingest, fn, hot_size, cold_size, frozen_size, overflow_size, courier_low, courier_num)
+    if not help_request:
+        main(tick_time, num_ingest, fn, hot_size, cold_size, frozen_size, overflow_size, courier_low, courier_num)

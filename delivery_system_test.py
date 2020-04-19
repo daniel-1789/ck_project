@@ -1,17 +1,22 @@
 import unittest
 from delivery_system import create_shelves, FoodItem, process_new_item, NewItemStatus, courier_action, \
-    restore_to_proper_shelf, process_new_item_2
+    restore_to_proper_shelf
 
 import json
 
+
 shelves = dict()
 curr_tick = 0
+
 
 class MyTestCase(unittest.TestCase):
     def setUp(self):
         """
         Creates the global shelves - reads the default json file in and builds it - the idea is to
         make all the shelves full. We can then adjust them as required in individual tests.
+
+        This assumes the json will fill all shelves if ingested all at once. This is the case with the
+        orders.json we are using - and it has at least one of each type on the overflow shelf.
         :return:
         """
         global shelves
@@ -41,91 +46,17 @@ class MyTestCase(unittest.TestCase):
         food_item = FoodItem(food_dict)
         return food_item
 
-    def test_add_all_full_2(self):
-        """
-        Attempt to add an item to the frozen shelf - remove an item from overflow to make it happen
-        :return:
-        """
-        global shelves
-        food_item = self.create_a_food_item()
-        rc = process_new_item_2(shelves, food_item)
-        self.assertEqual(rc, NewItemStatus.removed_item_for_room)
-
-    def test_add_already_present_2(self):
-        """
-        Test that code can detect an attempt to add an item to a shelf when item is already on a shelf
-        :return:
-        """
-        global shelves
-        food_item = self.create_a_food_item()
-        # remove an entry from the frozen
-        shelves['frozen'].food_dict.popitem()
-        rc = process_new_item_2(shelves, food_item)
-        self.assertEqual(rc, NewItemStatus.ok)
-        food_item_dup = self.create_a_food_item()
-        food_item_dup.temp = 'hot'
-        rc = process_new_item_2(shelves, food_item_dup)
-        self.assertEqual(rc, NewItemStatus.already_shelved)
-
-    def test_add_dest_full_2(self):
-        """
-        Destination shelf is full. Overflow shelf has room. Make sure goes into right shelf and
-        bump to overflow
-        :return:
-        """
-        global shelves
-        # remove an entry from the overflow
-        shelves['overflow'].food_dict.popitem()
-        food_item = self.create_a_food_item()
-        rc = process_new_item_2(shelves, food_item)
-        self.assertEqual(rc, NewItemStatus.moved_item_to_overflow)
-
-    def test_add_dest_has_room_2(self):
-        """
-        Destination shelf has room. Nothing needs to go to overflow or be dropped.
-        :return:
-        """
-        global shelves
-        # remove an entry from the frozen
-        shelves['frozen'].food_dict.popitem()
-        food_item = self.create_a_food_item()
-        rc = process_new_item_2(shelves, food_item)
-        self.assertEqual(rc, NewItemStatus.ok)
-
-    def test_add_no_matching_dict_2(self):
-        """
-        Attempt to add to a non-existent shelf
-        :return:
-        """
-        global shelves
-        # remove an entry from the overflow
-        food_item = self.create_a_food_item()
-        food_item.temp = 'absolute zero'
-        rc = process_new_item_2(shelves, food_item)
-        self.assertEqual(rc, NewItemStatus.no_shelf)
-
-    def test_add_dest_full_restore_from_overflow_2(self):
-        """
-        Destination shelf has room. Nothing needs to go to overflow or be dropped.
-        :return:
-        """
-        global shelves
-        # remove an entry from the hot - this will give us space for the overflow to rearrange
-        shelves['hot'].food_dict.popitem()
-        food_item = self.create_a_food_item()
-        rc = process_new_item_2(shelves, food_item)
-        self.assertEqual(rc, NewItemStatus.restored_from_overflow)
-
     def test_add_all_full(self):
         """
-        Attempt to add an item to the frozen shelf - should work, but should kick off an item
-        from the frozen shelf which cannot get put on overflow as that is full too
+        Attempt to add an item to the frozen shelf - no room - remove an item from overflow and put it there
         :return:
         """
         global shelves
         food_item = self.create_a_food_item()
         rc = process_new_item(shelves, food_item)
         self.assertEqual(rc, NewItemStatus.removed_item_for_room)
+        found_it = shelves['overflow'].food_dict.get(food_item.id, None) is not None
+        self.assertEqual(found_it, True)
 
     def test_add_already_present(self):
         """
@@ -155,6 +86,8 @@ class MyTestCase(unittest.TestCase):
         food_item = self.create_a_food_item()
         rc = process_new_item(shelves, food_item)
         self.assertEqual(rc, NewItemStatus.moved_item_to_overflow)
+        found_it = shelves['overflow'].food_dict.get(food_item.id, None) is not None
+        self.assertEqual(found_it, True)
 
     def test_add_dest_has_room(self):
         """
@@ -167,6 +100,8 @@ class MyTestCase(unittest.TestCase):
         food_item = self.create_a_food_item()
         rc = process_new_item(shelves, food_item)
         self.assertEqual(rc, NewItemStatus.ok)
+        found_it = shelves['frozen'].food_dict.get(food_item.id, None) is not None
+        self.assertEqual(found_it, True)
 
     def test_add_no_matching_dict(self):
         """
@@ -179,6 +114,20 @@ class MyTestCase(unittest.TestCase):
         food_item.temp = 'absolute zero'
         rc = process_new_item(shelves, food_item)
         self.assertEqual(rc, NewItemStatus.no_shelf)
+
+    def test_add_dest_full_restore_from_overflow(self):
+        """
+        Overflow is full. Remove an item from hot so overflow can move an item there
+        :return:
+        """
+        global shelves
+        # remove an entry from the hot - this will give us space for the overflow to rearrange
+        shelves['hot'].food_dict.popitem()
+        food_item = self.create_a_food_item()
+        rc = process_new_item(shelves, food_item)
+        self.assertEqual(rc, NewItemStatus.restored_from_overflow)
+        found_it = shelves['overflow'].food_dict.get(food_item.id, None) is not None
+        self.assertEqual(found_it, True)
 
     def setup_couriers(self, tick, food_item):
         """
@@ -205,7 +154,7 @@ class MyTestCase(unittest.TestCase):
         shelves['overflow'].food_dict.popitem()
         food_item = self.create_a_food_item()
         shelves['overflow'].food_dict = dict()  # destroy the old dict
-        shelves['overflow'].food_dict[food_item.id] = food_item  # force it on the overflow
+        rc = process_new_item(shelves, food_item)
         now_on_overflow = shelves['overflow'].food_dict.get(food_item.id, None) is not None
         self.assertEqual(now_on_overflow, True)
 
@@ -286,9 +235,8 @@ class MyTestCase(unittest.TestCase):
         food_item = self.create_a_food_item()
         food_item.shelf_life = 1.0
         food_item.decay_rate = 0.5
-        food_item.temp = 'overflow' # cheat a little to get it on overflow
         rc = process_new_item(shelves, food_item)
-        self.assertEqual(rc, NewItemStatus.ok)
+        self.assertEqual(rc, NewItemStatus.moved_item_to_overflow)
         shelves['overflow'].add_ticks(1)
         still_present = shelves['overflow'].food_dict.get(food_item.id, None) is not None
         self.assertEqual(False, still_present)
@@ -309,9 +257,10 @@ class MyTestCase(unittest.TestCase):
         cheapest_id = shelves['frozen'].find_cheapest_item()
         self.assertEqual(cheapest_id, food_item.id)
 
-    def test_restore(self):
+    def test_restore_all(self):
         """
-        Test that rebalancing will move things to shelf if there is room
+        Test that rebalancing will move things to proper shelf if there is room -
+        this code is not in use in the main code but would be a useful addition
         :return:
         """
         global shelves
