@@ -237,21 +237,6 @@ class MyTestCase(unittest.TestCase):
         still_present = self.shelves['overflow'].food_dict.get(food_item.id, None) is not None
         self.assertEqual(False, still_present)
 
-    def test_cheapest(self):
-        """
-        Test that the cheapest item can be found - note we don't use the cheapest as a determination as to
-        what to throw out but I have experimented with doing so.
-        :return:
-        """
-        # remove an entry from the frozen
-        self.shelves['frozen'].food_dict.popitem()
-        food_item = self.create_a_food_item()
-        food_item.value = 0.0000000001
-        rc = process_new_item(self.shelves, food_item)
-        self.assertEqual(rc, NewItemStatus.ok)
-        cheapest_id = self.shelves['frozen'].find_cheapest_item()
-        self.assertEqual(cheapest_id, food_item.id)
-
     def test_restore_all(self):
         """
         Test that rebalancing will move things to proper shelf if there is room -

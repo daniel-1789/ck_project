@@ -41,7 +41,8 @@ what their desire was. As it is, the code would be very easy to modify to change
 
 I did make the moving of items from the overflow shelf - either back to their proper shelf - or to discard -
 fairly arbitrary. I did a popitem for disposing of an item on the shelf. I also looked for the first item
-on the overflow shelf that could be moved back to its proper shelf.
+on the overflow shelf that could be moved back to its proper shelf. This would be another place to chat
+with stakeholders.
 
 - The processing of every tick is a bit of a potential bottleneck on a larger scale environment, as for
 every item currently on a shelf new calculations need to be made for the new value of the item. One
@@ -95,25 +96,6 @@ class FoodShelf:
         self.shelf_max = shelf_capacity
         self.food_dict = dict()
         self.decay_mult = 1.0 if shelf_type != 'overflow' else 2.0
-
-    def find_cheapest_item(self):
-        """
-        Simple linear search to find cheapest item - can be used when deciding what to toss out.
-        Definitely opportunity for optimization should the shelf change from room for double-digits of entries
-        to thousands/millions/etc.
-        :return: cheapest item's id
-        """
-        # linear search of the shelf for cheapest item
-        if len(self.food_dict) == 0:
-            return None
-        else:
-            cheapest_value = float('inf')
-            cheapest_key = None
-            for k, v in self.food_dict.items():
-                if v.value < cheapest_value:
-                    cheapest_key = k
-                    cheapest_value = v.value
-        return cheapest_key
 
     def add_food_to_shelf(self, food_item: FoodItem):
         """

@@ -63,7 +63,9 @@ what their desire was. As it is, the code would be very easy to modify to change
 
 I did make the moving of items from the overflow shelf - either back to their proper shelf - or to discard -
 fairly arbitrary. I did a popitem for disposing of an item on the shelf. I also looked for the first item
-on the overflow shelf that could be moved back to its proper shelf.
+on the overflow shelf that could be moved back to its proper shelf. This would be another place to chat
+with stakeholders.
+
 
 ### Potential Opimizations
 
