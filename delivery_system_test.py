@@ -1,12 +1,9 @@
 import unittest
 from delivery_system import create_shelves, FoodItem, process_new_item, NewItemStatus, courier_action, \
     restore_to_proper_shelf
-
 import json
 
-
 curr_tick = 0
-
 
 class MyTestCase(unittest.TestCase):
     def setUp(self):
@@ -101,8 +98,6 @@ class MyTestCase(unittest.TestCase):
         Attempt to add to a non-existent shelf
         :return:
         """
-
-        # remove an entry from the overflow
         food_item = self.create_a_food_item()
         food_item.temp = 'absolute zero'
         rc = process_new_item(self.shelves, food_item)
@@ -113,7 +108,6 @@ class MyTestCase(unittest.TestCase):
         Overflow is full. Remove an item from hot so overflow can move an item there
         :return:
         """
-
         # remove an entry from the hot - this will give us space for the overflow to rearrange
         self.shelves['hot'].food_dict.popitem()
         food_item = self.create_a_food_item()
@@ -141,8 +135,6 @@ class MyTestCase(unittest.TestCase):
         verify the courier gets an entry that is on overflow
         :return:
         """
-
-        global curr_tick
         # remove an entry from the overflow
         self.shelves['overflow'].food_dict.popitem()
         food_item = self.create_a_food_item()
@@ -163,7 +155,6 @@ class MyTestCase(unittest.TestCase):
         verify the courier gets an entry that is on the proper shelf
         :return:
         """
-
         global curr_tick
         # remove an entry from the overflow
         self.shelves['frozen'].food_dict.popitem()
@@ -233,10 +224,10 @@ class MyTestCase(unittest.TestCase):
 
     def test_cheapest(self):
         """
-        Test that the cheapest item can be found
+        Test that the cheapest item can be found - note we don't use the cheapest as a determination as to
+        what to throw out but I have experimented with doing so.
         :return:
         """
-        global curr_tick
         # remove an entry from the frozen
         self.shelves['frozen'].food_dict.popitem()
         food_item = self.create_a_food_item()
@@ -252,7 +243,6 @@ class MyTestCase(unittest.TestCase):
         this code is not in use in the main code but would be a useful addition
         :return:
         """
-        global curr_tick
 
         food_item = self.create_a_food_item()
 

@@ -24,11 +24,7 @@ of that class is a dictionary of FoodItems (another class I created), using the 
 and the value is a list of FoodItems that need to be picked up. The courier will first look for the food on
 the proper shel and the overflow shelf. Since the food is stored in a dictionary on the shelves, this is a
 series of O(1) operations - an O(1) to get the list of food ready to be picked up, an O(1) to search for
-proper food shelf, and an O(1) to search the overflow shelf. A possible bottleneck is the case where there are
-a very large number of FoodItems to be picked up, as each will be processed linerarly. That's clearly not
-the case in this exercise, but in a production environment would need to be considered - it might be an 
-opportunity for some parallelism, though Python tends to be a bit mediocre when dealing with parallel
-programming.
+proper food shelf, and an O(1) to search the overflow shelf. 
 
 - I found the following text a little ambiguous:
 "The kitchen pick-up area has multiple shelves to hold cooked orders at different temperatures. Each order should be 
@@ -43,11 +39,20 @@ the new order on the overflow shelf seemed the most reasonable option to me so t
 In a "real world" environment, this is certainly an area where I would talk with the stakeholders as to 
 what their desire was. As it is, the code would be very easy to modify to change the algorithm.
 
+I did make the moving of items from the overflow shelf - either back to their proper shelf - or to discard -
+fairly arbitrary. I did a popitem for disposing of an item on the shelf. I also looked for the first item
+on the overflow shelf that could be moved back to its proper shelf.
+
 - The processing of every tick is a bit of a potential bottleneck on a larger scale environment, as for
 every item currently on a shelf new calculations need to be made for the new value of the item. One
 optimization to consider on a much larger-scale system would be to, upon putting an item on a shelf, doing
 a calculation as to when its value will reach 0 and using a dictionary (i.e. hash table) to store lists of
-food that expire on certain ticks of the clock. T
+food that expire on certain ticks of the clock. This would be similar to what was done for the couriers. 
+The problem with this approach is every time food is picked up we want to display the shelves, including
+the values of the items. O(N) per tick seems a resonable cost to avoid that complexity
+
+As it stands now, the performance of each tick is O(N), where N is the number of food items on the shelves, which
+maxes out at 45. 
 """
 
 curr_tick = 0  # global clock
@@ -93,7 +98,7 @@ class FoodShelf:
 
     def find_cheapest_item(self):
         """
-        Simple linear search to find cheapest item - used when deciding what to toss outf.
+        Simple linear search to find cheapest item - can be used when deciding what to toss out.
         Definitely opportunity for optimization should the shelf change from room for double-digits of entries
         to thousands/millions/etc.
         :return: cheapest item's id
@@ -112,16 +117,15 @@ class FoodShelf:
 
     def add_food_to_shelf(self, food_item: FoodItem):
         """
-        Add a food item to this shelf. If the shelf is full remove the least valuable item.
+        Add a food item to this shelf. If the shelf is full remove an arbitary item.
         :param food_item: food item to add
         :return: None if food added to shelf without bumping anything, otherwise the food that was bumped
         """
         removed_food = None
         if len(self.food_dict) >= self.shelf_max:
-            # remove the minimum value item - just a linear search for now
-            remove_key = self.find_cheapest_item()
-            removed_food = self.food_dict.pop(remove_key)
-
+            # had experimented with removing the cheapest item but for performance reasons just removing
+            # an arbitrary item - avoiding multiple linear traversals of shelves.
+            remove_key, removed_food = self.food_dict.popitem()
         k = food_item.id
         self.food_dict[k] = food_item
         return removed_food
@@ -262,9 +266,9 @@ def process_new_item(shelves, curr_item: FoodItem):
                             curr_item.id))
                 rc = NewItemStatus.restored_from_overflow
             else:
-                # worst case - need to remove something. Pick the thing that is cheapest
+                # worst case - need to remove something which the add_to_shelf will do automatically
                 removed_item =  overflow_shelf.add_food_to_shelf(curr_item)
-                log_action(shelves, 'New item {} added to overflow.  Tossed {}'.format(
+                log_action(shelves, 'New item {} added to overflow.  Discarded {}'.format(
                                curr_item.id, removed_item.id))
                 rc = NewItemStatus.removed_item_for_room
     return rc
