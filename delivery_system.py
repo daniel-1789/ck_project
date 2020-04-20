@@ -459,7 +459,7 @@ if __name__ == "__main__":
                     pointer += 1
                 elif curr_arg == '--help':
                     help_request = True
-                    usage_message(help=True)
+                    usage_message(help_request=True)
                     break
                 else:
                     raise ()
