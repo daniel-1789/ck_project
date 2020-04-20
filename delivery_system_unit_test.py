@@ -93,6 +93,21 @@ class MyTestCase(unittest.TestCase):
         found_it = self.shelves['frozen'].food_dict.get(food_item.id, None) is not None
         self.assertEqual(found_it, True)
 
+    def test_add_dest_is_empty(self):
+        """
+        Destination shelf is empty. Nothing needs to go to overflow or be dropped.
+        :return:
+        """
+        # remove an entry from the frozen
+        self.shelves['frozen'].food_dict = dict()  # destroy the old dict
+        food_item = self.create_a_food_item()
+        rc = process_new_item(self.shelves, food_item)
+        self.assertEqual(rc, NewItemStatus.ok)
+        found_it = self.shelves['frozen'].food_dict.get(food_item.id, None) is not None
+        self.assertEqual(found_it, True)
+        self.assertEqual(1, len(self.shelves['frozen'].food_dict))
+
+
     def test_add_no_matching_dict(self):
         """
         Attempt to add to a non-existent shelf
@@ -243,7 +258,6 @@ class MyTestCase(unittest.TestCase):
         this code is not in use in the main code but would be a useful addition
         :return:
         """
-
         food_item = self.create_a_food_item()
 
         self.shelves['overflow'].food_dict = dict()  # destroy the old dict
