@@ -5,23 +5,20 @@ from delivery_system import create_shelves, FoodItem, process_new_item, NewItemS
 import json
 
 
-shelves = dict()
 curr_tick = 0
 
 
 class MyTestCase(unittest.TestCase):
     def setUp(self):
         """
-        Creates the global shelves - reads the default json file in and builds it - the idea is to
+        Creates the class variable shelves - reads the default json file in and builds it - the idea is to
         make all the shelves full. We can then adjust them as required in individual tests.
 
         This assumes the json will fill all shelves if ingested all at once. This is the case with the
         orders.json we are using - and it has at least one of each type on the overflow shelf.
         :return:
         """
-        global shelves
-        shelves = dict()
-        shelves = create_shelves(10, 10, 10, 15)
+        self.shelves = create_shelves(10, 10, 10, 15)
         with open('orders.json', 'r') as target:
             json_list = json.load(target)
         len_list = len(json_list)
@@ -30,7 +27,7 @@ class MyTestCase(unittest.TestCase):
         for i in range(len_list):
             curr_item = next(jsons)
             food_item = FoodItem(curr_item)
-            process_new_item(shelves, food_item)
+            process_new_item(self.shelves, food_item)
 
     def create_a_food_item(self):
         """
@@ -51,11 +48,10 @@ class MyTestCase(unittest.TestCase):
         Attempt to add an item to the frozen shelf - no room - remove an item from overflow and put it there
         :return:
         """
-        global shelves
         food_item = self.create_a_food_item()
-        rc = process_new_item(shelves, food_item)
+        rc = process_new_item(self.shelves, food_item)
         self.assertEqual(rc, NewItemStatus.removed_item_for_room)
-        found_it = shelves['overflow'].food_dict.get(food_item.id, None) is not None
+        found_it = self.shelves['overflow'].food_dict.get(food_item.id, None) is not None
         self.assertEqual(found_it, True)
 
     def test_add_already_present(self):
@@ -63,15 +59,14 @@ class MyTestCase(unittest.TestCase):
         Test that code can detect an attempt to add an item to a shelf when item is already on a shelf
         :return:
         """
-        global shelves
         food_item = self.create_a_food_item()
         # remove an entry from the frozen
-        shelves['frozen'].food_dict.popitem()
-        rc = process_new_item(shelves, food_item)
+        self.shelves['frozen'].food_dict.popitem()
+        rc = process_new_item(self.shelves, food_item)
         self.assertEqual(rc, NewItemStatus.ok)
         food_item_dup = self.create_a_food_item()
         food_item_dup.temp = 'hot'
-        rc = process_new_item(shelves, food_item_dup)
+        rc = process_new_item(self.shelves, food_item_dup)
         self.assertEqual(rc, NewItemStatus.already_shelved)
 
     def test_add_dest_full(self):
@@ -80,13 +75,12 @@ class MyTestCase(unittest.TestCase):
         bump to overflow
         :return:
         """
-        global shelves
         # remove an entry from the overflow
-        shelves['overflow'].food_dict.popitem()
+        self.shelves['overflow'].food_dict.popitem()
         food_item = self.create_a_food_item()
-        rc = process_new_item(shelves, food_item)
+        rc = process_new_item(self.shelves, food_item)
         self.assertEqual(rc, NewItemStatus.moved_item_to_overflow)
-        found_it = shelves['overflow'].food_dict.get(food_item.id, None) is not None
+        found_it = self.shelves['overflow'].food_dict.get(food_item.id, None) is not None
         self.assertEqual(found_it, True)
 
     def test_add_dest_has_room(self):
@@ -94,13 +88,12 @@ class MyTestCase(unittest.TestCase):
         Destination shelf has room. Nothing needs to go to overflow or be dropped.
         :return:
         """
-        global shelves
         # remove an entry from the frozen
-        shelves['frozen'].food_dict.popitem()
+        self.shelves['frozen'].food_dict.popitem()
         food_item = self.create_a_food_item()
-        rc = process_new_item(shelves, food_item)
+        rc = process_new_item(self.shelves, food_item)
         self.assertEqual(rc, NewItemStatus.ok)
-        found_it = shelves['frozen'].food_dict.get(food_item.id, None) is not None
+        found_it = self.shelves['frozen'].food_dict.get(food_item.id, None) is not None
         self.assertEqual(found_it, True)
 
     def test_add_no_matching_dict(self):
@@ -108,11 +101,11 @@ class MyTestCase(unittest.TestCase):
         Attempt to add to a non-existent shelf
         :return:
         """
-        global shelves
+
         # remove an entry from the overflow
         food_item = self.create_a_food_item()
         food_item.temp = 'absolute zero'
-        rc = process_new_item(shelves, food_item)
+        rc = process_new_item(self.shelves, food_item)
         self.assertEqual(rc, NewItemStatus.no_shelf)
 
     def test_add_dest_full_restore_from_overflow(self):
@@ -120,13 +113,13 @@ class MyTestCase(unittest.TestCase):
         Overflow is full. Remove an item from hot so overflow can move an item there
         :return:
         """
-        global shelves
+
         # remove an entry from the hot - this will give us space for the overflow to rearrange
-        shelves['hot'].food_dict.popitem()
+        self.shelves['hot'].food_dict.popitem()
         food_item = self.create_a_food_item()
-        rc = process_new_item(shelves, food_item)
+        rc = process_new_item(self.shelves, food_item)
         self.assertEqual(rc, NewItemStatus.restored_from_overflow)
-        found_it = shelves['overflow'].food_dict.get(food_item.id, None) is not None
+        found_it = self.shelves['overflow'].food_dict.get(food_item.id, None) is not None
         self.assertEqual(found_it, True)
 
     def setup_couriers(self, tick, food_item):
@@ -148,21 +141,21 @@ class MyTestCase(unittest.TestCase):
         verify the courier gets an entry that is on overflow
         :return:
         """
-        global shelves
+
         global curr_tick
         # remove an entry from the overflow
-        shelves['overflow'].food_dict.popitem()
+        self.shelves['overflow'].food_dict.popitem()
         food_item = self.create_a_food_item()
-        shelves['overflow'].food_dict = dict()  # destroy the old dict
-        rc = process_new_item(shelves, food_item)
-        now_on_overflow = shelves['overflow'].food_dict.get(food_item.id, None) is not None
+        self.shelves['overflow'].food_dict = dict()  # destroy the old dict
+        rc = process_new_item(self.shelves, food_item)
+        now_on_overflow = self.shelves['overflow'].food_dict.get(food_item.id, None) is not None
         self.assertEqual(now_on_overflow, True)
 
         couriers = self.setup_couriers(curr_tick, food_item)
-        retrieved_items = courier_action(shelves, couriers)
+        retrieved_items = courier_action(self.shelves, couriers)
         removed_it = food_item in retrieved_items
         self.assertEqual(True, removed_it)
-        now_on_overflow = shelves['overflow'].food_dict.get(food_item.id, None) is not None
+        now_on_overflow = self.shelves['overflow'].food_dict.get(food_item.id, None) is not None
         self.assertEqual(now_on_overflow, False)
 
     def test_courier_get_from_right_shelf(self):
@@ -170,21 +163,21 @@ class MyTestCase(unittest.TestCase):
         verify the courier gets an entry that is on the proper shelf
         :return:
         """
-        global shelves
+
         global curr_tick
         # remove an entry from the overflow
-        shelves['frozen'].food_dict.popitem()
+        self.shelves['frozen'].food_dict.popitem()
         food_item = self.create_a_food_item()
-        rc = process_new_item(shelves, food_item)
+        rc = process_new_item(self.shelves, food_item)
         self.assertEqual(rc, NewItemStatus.ok)
-        now_on_frozen = shelves['frozen'].food_dict.get(food_item.id, None) is not None
+        now_on_frozen = self.shelves['frozen'].food_dict.get(food_item.id, None) is not None
         self.assertEqual(now_on_frozen, True)
 
         couriers = self.setup_couriers(curr_tick, food_item)
-        retrieved_items = courier_action(shelves, couriers)
+        retrieved_items = courier_action(self.shelves, couriers)
         removed_it = food_item in retrieved_items
         self.assertEqual(True, removed_it)
-        now_on_frozen = shelves['frozen'].food_dict.get(food_item.id, None) is not None
+        now_on_frozen = self.shelves['frozen'].food_dict.get(food_item.id, None) is not None
         self.assertEqual(now_on_frozen, False)
 
     def test_courier_item_not_present(self):
@@ -192,12 +185,11 @@ class MyTestCase(unittest.TestCase):
         Verify courier fails at getting a non-existent item
         :return:
         """
-        global shelves
         global curr_tick
         food_item = self.create_a_food_item()  # do not insert this one onto a shelf
 
         couriers = self.setup_couriers(curr_tick, food_item)
-        retrieved_items = courier_action(shelves, couriers)
+        retrieved_items = courier_action(self.shelves, couriers)
         removed_it = food_item in retrieved_items
         self.assertEqual(False, removed_it)
 
@@ -206,21 +198,20 @@ class MyTestCase(unittest.TestCase):
         Force food to spoil, detect it is removed
         :return:
         """
-        global shelves
         global curr_tick
         # remove an entry from the frozen
-        shelves['frozen'].food_dict.popitem()
+        self.shelves['frozen'].food_dict.popitem()
         food_item = self.create_a_food_item()
         food_item.shelf_life = 1.0
         food_item.decay_rate = 0.5
-        rc = process_new_item(shelves, food_item)
+        rc = process_new_item(self.shelves, food_item)
         self.assertEqual(rc, NewItemStatus.ok)
-        shelves['frozen'].add_ticks(1)
-        still_present = shelves['frozen'].food_dict.get(food_item.id, None) is not None
+        self.shelves['frozen'].add_ticks(1)
+        still_present = self.shelves['frozen'].food_dict.get(food_item.id, None) is not None
         self.assertEqual(True, still_present)
 
-        shelves['frozen'].add_ticks(1)
-        still_present = shelves['frozen'].food_dict.get(food_item.id, None) is not None
+        self.shelves['frozen'].add_ticks(1)
+        still_present = self.shelves['frozen'].food_dict.get(food_item.id, None) is not None
         self.assertEqual(False, still_present)
 
     def test_food_spoil_overflow_faster(self):
@@ -228,17 +219,16 @@ class MyTestCase(unittest.TestCase):
         Verify the overflow shelf spoils faster
         :return:
         """
-        global shelves
         global curr_tick
         # remove an entry from the overflow
-        shelves['overflow'].food_dict.popitem()
+        self.shelves['overflow'].food_dict.popitem()
         food_item = self.create_a_food_item()
         food_item.shelf_life = 1.0
         food_item.decay_rate = 0.5
-        rc = process_new_item(shelves, food_item)
+        rc = process_new_item(self.shelves, food_item)
         self.assertEqual(rc, NewItemStatus.moved_item_to_overflow)
-        shelves['overflow'].add_ticks(1)
-        still_present = shelves['overflow'].food_dict.get(food_item.id, None) is not None
+        self.shelves['overflow'].add_ticks(1)
+        still_present = self.shelves['overflow'].food_dict.get(food_item.id, None) is not None
         self.assertEqual(False, still_present)
 
     def test_cheapest(self):
@@ -246,15 +236,14 @@ class MyTestCase(unittest.TestCase):
         Test that the cheapest item can be found
         :return:
         """
-        global shelves
         global curr_tick
         # remove an entry from the frozen
-        shelves['frozen'].food_dict.popitem()
+        self.shelves['frozen'].food_dict.popitem()
         food_item = self.create_a_food_item()
         food_item.value = 0.0000000001
-        rc = process_new_item(shelves, food_item)
+        rc = process_new_item(self.shelves, food_item)
         self.assertEqual(rc, NewItemStatus.ok)
-        cheapest_id = shelves['frozen'].find_cheapest_item()
+        cheapest_id = self.shelves['frozen'].find_cheapest_item()
         self.assertEqual(cheapest_id, food_item.id)
 
     def test_restore_all(self):
@@ -263,25 +252,24 @@ class MyTestCase(unittest.TestCase):
         this code is not in use in the main code but would be a useful addition
         :return:
         """
-        global shelves
         global curr_tick
 
         food_item = self.create_a_food_item()
 
-        shelves['overflow'].food_dict = dict()  # destroy the old dict
-        shelves['overflow'].food_dict[food_item.id] = food_item  # force it on the overflow
+        self.shelves['overflow'].food_dict = dict()  # destroy the old dict
+        self.shelves['overflow'].food_dict[food_item.id] = food_item  # force it on the overflow
 
-        now_on_frozen = shelves['frozen'].food_dict.get(food_item.id, None) is not None
+        now_on_frozen = self.shelves['frozen'].food_dict.get(food_item.id, None) is not None
         self.assertEqual(now_on_frozen, False)
-        now_on_standby = shelves['overflow'].food_dict.get(food_item.id, None) is not None
+        now_on_standby = self.shelves['overflow'].food_dict.get(food_item.id, None) is not None
         self.assertEqual(now_on_standby, True)
 
-        shelves['frozen'].food_dict = dict()  # destroy the old dict
-        restore_to_proper_shelf(shelves)  # this should move it to the frozen shelf
+        self.shelves['frozen'].food_dict = dict()  # destroy the old dict
+        restore_to_proper_shelf(self.shelves)  # this should move it to the frozen shelf
 
-        now_on_frozen = shelves['frozen'].food_dict.get(food_item.id, None) is not None
+        now_on_frozen = self.shelves['frozen'].food_dict.get(food_item.id, None) is not None
         self.assertEqual(now_on_frozen, True)
-        now_on_standby = shelves['overflow'].food_dict.get(food_item.id, None) is not None
+        now_on_standby = self.shelves['overflow'].food_dict.get(food_item.id, None) is not None
         self.assertEqual(now_on_standby, False)
 
 
